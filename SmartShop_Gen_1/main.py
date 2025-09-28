@@ -251,7 +251,7 @@ from datetime import datetime
 from sklearn.ensemble import RandomForestRegressor
 import altair as alt
 
-DB_PATH = r"C:\Users\AKSHAT\Desktop\SmartShop\SmartShop_Gen_1\my_database.db"
+DB_PATH = r"C:\Users\AKSHAT\Desktop\DBMS_PBL\SmartShop\SmartShop_Gen_1\my_database.db"
 
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
