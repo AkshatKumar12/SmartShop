@@ -32,5 +32,3 @@ More details about usage will be added as the project develops.
 4. Push to the branch (`git push origin feature/YourFeature`)
 5. Open a Pull Request
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
