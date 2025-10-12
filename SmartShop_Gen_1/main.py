@@ -7,16 +7,14 @@ from sklearn.ensemble import RandomForestRegressor
 import altair as alt
 import os
 
-# -------------------- DATABASE SETUP --------------------
-# Use relative path for Streamlit Cloud
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, "my_database.db")  
+DB_PATH = os.path.join(BASE_DIR, "my_database.db") 
 
-# Connect to SQLite
+# sqlite
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
-# -------------------- SIDEBAR --------------------
 st.sidebar.header("Inventory Operations")
 operation = st.sidebar.selectbox("Choose Operation", ["Sell", "Buy / Replenish"])
 product_id = st.sidebar.number_input("Product ID", min_value=1)
@@ -24,12 +22,11 @@ product_name = st.sidebar.text_input("Product Name")
 quantity = st.sidebar.number_input("Quantity", min_value=0)
 action_btn = st.sidebar.button("Confirm")
 
-# System date
+
 now = datetime.now()
-date = now.strftime("%Y-%m-%d")  # ISO format
+date = now.strftime("%Y-%m-%d") 
 day = now.strftime("%A")
 
-# -------------------- OPERATIONS --------------------
 if action_btn:
     cursor.execute("SELECT stock_sold_total, stock_left FROM inventory WHERE product_id=?", (product_id,))
     inv_row = cursor.fetchone()
@@ -45,13 +42,13 @@ if action_btn:
                 stock_left = current_stock - quantity
                 stock_sold_total = inv_row[0] + quantity
 
-                # Insert transaction
+                
                 cursor.execute("""
                     INSERT INTO my_table (product_id, product_name, date, day, stock_sold, stock_left)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (product_id, product_name, date, day, quantity, stock_left))
 
-                # Update inventory
+               
                 cursor.execute("""
                     UPDATE inventory
                     SET stock_sold_total=?, stock_left=?, product_name=?
@@ -68,13 +65,11 @@ if action_btn:
             stock_left = quantity
             stock_sold_total = 0
 
-        # Insert transaction for buy
         cursor.execute("""
             INSERT INTO my_table (product_id, product_name, date, day, stock_sold, stock_left)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (product_id, product_name, date, day, 0, stock_left))
 
-        # Update inventory
         cursor.execute("""
             INSERT INTO inventory (product_id, product_name, stock_sold_total, stock_left)
             VALUES (?, ?, ?, ?)
@@ -88,11 +83,9 @@ if action_btn:
 
     conn.commit()
 
-# -------------------- DASHBOARD --------------------
 st.title("🛒 SmartShop Dashboard")
 tabs = st.tabs(["Transactions Table", "Inventory Table", "AI Forecast"])
 
-# -------------------- Transactions --------------------
 with tabs[0]:
     st.subheader("Transaction History")
     df_transactions = pd.read_sql("SELECT * FROM my_table ORDER BY ROWID DESC", conn)
@@ -103,7 +96,6 @@ with tabs[0]:
         ).fillna(0)
         st.line_chart(pivot_data)
 
-# -------------------- Inventory --------------------
 with tabs[1]:
     st.subheader("Current Inventory")
     df_inventory = pd.read_sql("SELECT * FROM inventory ORDER BY product_id", conn)
@@ -112,36 +104,37 @@ with tabs[1]:
         st.bar_chart(df_inventory.set_index("product_name")['stock_left'])
         st.line_chart(df_inventory.set_index("product_name")['stock_sold_total'])
 
-# -------------------- AI / Forecast --------------------
+#ml
 with tabs[2]:
     st.subheader("AI & Forecast Dashboard")
     df = pd.read_sql("SELECT * FROM my_table", conn)
 
     if not df.empty:
-        # Parse dates
+        
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         df['day_of_week'] = df['date'].dt.day_name()
         df['month'] = df['date'].dt.month
         df['product_id_code'] = df['product_id'].astype('category').cat.codes
 
-        # 1️⃣ Sales Over Time
+        
         st.markdown("### Sales Over Time per Product")
         line_chart_data = df.pivot_table(
             index='date', columns='product_name', values='stock_sold', aggfunc='sum'
         ).fillna(0)
         st.line_chart(line_chart_data)
 
-        # 2️⃣ Total Stock Sold
         st.markdown("### Total Stock Sold per Product")
         total_sold = df.groupby('product_name')['stock_sold'].sum()
         st.bar_chart(total_sold)
 
         # 3️⃣ Current Stock Left
+        # stock lft
         st.markdown("### Current Stock Left per Product")
         if not df_inventory.empty:
             st.bar_chart(df_inventory.set_index("product_name")['stock_left'])
 
         # 4️⃣ Predicted Sales Next Month
+        # preediction
         st.markdown("### Predicted Sales Next Month per Product")
         X = df[['product_id_code', 'month']]
         y = df['stock_sold']
@@ -156,7 +149,7 @@ with tabs[2]:
             pred_df = pd.concat([pred_df, pd.DataFrame({'Product':[prod], 'Predicted_Sales':[int(pred[0])]})])
         st.bar_chart(pred_df.set_index('Product')['Predicted_Sales'])
 
-        # 5️⃣ Sales by Day of Week Heatmap
+        #heatmap
         st.markdown("### Sales by Day of Week")
         heatmap_data = df.groupby(['day_of_week','product_name'])['stock_sold'].sum().reset_index()
         chart = alt.Chart(heatmap_data).mark_rect().encode(
