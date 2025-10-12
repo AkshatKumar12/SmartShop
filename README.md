@@ -8,7 +8,6 @@ A smart shopping application to enhance your shopping experience.
 - [Installation](#installation)
 - [Usage](#usage)
 - [Contributing](#contributing)
-- [License](#license)
 
 ## Features
 - Coming soon...
