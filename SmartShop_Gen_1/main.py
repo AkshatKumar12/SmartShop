@@ -1,4 +1,3 @@
-
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -7,8 +6,8 @@ from sklearn.ensemble import RandomForestRegressor
 import altair as alt
 import os
 
+# databse
 BASE_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(BASE_DIR, "my_database.db")  
 DB_PATH = os.path.join(BASE_DIR, "my_database.db") 
 
 # sqlite
@@ -27,6 +26,7 @@ now = datetime.now()
 date = now.strftime("%Y-%m-%d") 
 day = now.strftime("%A")
 
+# crud
 if action_btn:
     cursor.execute("SELECT stock_sold_total, stock_left FROM inventory WHERE product_id=?", (product_id,))
     inv_row = cursor.fetchone()
@@ -127,13 +127,11 @@ with tabs[2]:
         total_sold = df.groupby('product_name')['stock_sold'].sum()
         st.bar_chart(total_sold)
 
-        # 3️⃣ Current Stock Left
         # stock lft
         st.markdown("### Current Stock Left per Product")
         if not df_inventory.empty:
             st.bar_chart(df_inventory.set_index("product_name")['stock_left'])
 
-        # 4️⃣ Predicted Sales Next Month
         # preediction
         st.markdown("### Predicted Sales Next Month per Product")
         X = df[['product_id_code', 'month']]
