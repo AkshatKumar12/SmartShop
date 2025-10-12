@@ -23,7 +23,7 @@ A smart shopping application to enhance your shopping experience.
    ```
 
 ## Usage
-More details about usage will be added as the project develops.
+visit -> `smartshop.stremlit.app`
 
 ## Contributing
 1. Fork the repository
