@@ -17,7 +17,6 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* ---------- Main Header ---------- */
     .main-header {
         font-size: 2.5rem;
         font-weight: 700;
@@ -27,7 +26,6 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
 
-    /* ---------- Metrics Cards ---------- */
     div[data-testid="stMetric"] {
         background: #f8f9fa;
         padding: 1.5rem;
@@ -55,7 +53,6 @@ st.markdown("""
         color: #374151;
     }
 
-    /* ---------- Tabs ---------- */
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
     }
@@ -83,14 +80,12 @@ st.markdown("""
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.2);
     }
 
-    /* ---------- DataFrame ---------- */
     div[data-testid="stDataFrame"] {
         border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     }
 
-    /* ---------- Sidebar Buttons ---------- */
     section[data-testid="stSidebar"] .stButton > button {
         background: linear-gradient(145deg, #667eea, #764ba2);
         border: none;
@@ -112,7 +107,6 @@ st.markdown("""
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.3);
     }
     
-    /* ---------- Expiry Alerts ---------- */
     .expiry-critical {
         background-color: #fee2e2;
         border-left: 4px solid #dc2626;
@@ -140,7 +134,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# -------------------- HELPER FUNCTIONS --------------------
 def calculate_dynamic_price(base_price, expiry_date, current_date):
     """Calculate price based on days until expiry"""
     try:
@@ -148,17 +141,17 @@ def calculate_dynamic_price(base_price, expiry_date, current_date):
         current = pd.to_datetime(current_date)
         days_left = (expiry - current).days
         
-        if days_left < 0:  # Expired
-            return base_price * 0.1, 90  # 90% off
-        elif days_left <= 2:  # Critical (0-2 days)
-            return base_price * 0.3, 70  # 70% off
-        elif days_left <= 5:  # Urgent (3-5 days)
-            return base_price * 0.5, 50  # 50% off
-        elif days_left <= 10:  # Warning (6-10 days)
-            return base_price * 0.7, 30  # 30% off
-        elif days_left <= 15:  # Soon (11-15 days)
-            return base_price * 0.85, 15  # 15% off
-        else:  # Fresh
+        if days_left < 0:
+            return base_price * 0.1, 90
+        elif days_left <= 2:
+            return base_price * 0.3, 70
+        elif days_left <= 5:
+            return base_price * 0.5, 50
+        elif days_left <= 10:
+            return base_price * 0.7, 30
+        elif days_left <= 15:
+            return base_price * 0.85, 15
+        else:
             return base_price, 0
     except Exception as e:
         return base_price, 0
@@ -178,6 +171,31 @@ def get_expiry_status(days_left):
         return "SOON", "🔵"
     else:
         return "FRESH", "🟢"
+
+
+@st.cache_resource
+def get_database_connection():
+    """Get database connection with proper path handling"""
+    DB_PATH = "my_database.db"
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS my_table (
+            product_id INTEGER,
+            product_name TEXT,
+            date TEXT,
+            day TEXT,
+            stock_sold INTEGER,
+            stock_left INTEGER,
+            expiry_date TEXT,
+            base_price REAL,
+            adjusted_price REAL,
+            discount_percent INTEGER
+        )
+    """)
+    conn.commit()
+    return conn
 
 
 def get_current_inventory(conn):
@@ -216,33 +234,10 @@ def get_current_inventory(conn):
     return pd.read_sql(query, conn)
 
 
-# -------------------- DATABASE SETUP --------------------
-BASE_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(BASE_DIR, "my_database.db")  
-
-conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+conn = get_database_connection()
 cursor = conn.cursor()
 
-# Create table if it doesn't exist
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS my_table (
-        product_id INTEGER,
-        product_name TEXT,
-        date TEXT,
-        day TEXT,
-        stock_sold INTEGER,
-        stock_left INTEGER,
-        expiry_date TEXT,
-        base_price REAL,
-        adjusted_price REAL,
-        discount_percent INTEGER
-    )
-""")
 
-conn.commit()
-
-
-# -------------------- SIDEBAR --------------------
 st.sidebar.markdown("## Inventory Operations")
 
 st.sidebar.markdown("---")
@@ -266,6 +261,21 @@ operation = st.sidebar.radio(
 
 with st.sidebar.expander("Product Details", expanded=True):
     product_id = st.number_input("Product ID", min_value=1, step=1)
+    
+    # For new products in Buy operation, show product name input first
+    if operation == "Buy":
+        cursor.execute("""
+            SELECT product_name
+            FROM my_table
+            WHERE product_id = ?
+            ORDER BY date DESC, ROWID DESC
+            LIMIT 1
+        """, (product_id,))
+        existing_product = cursor.fetchone()
+        
+        if not existing_product:
+            product_name_input = st.text_input("Product Name (Required for new products)")
+        
     quantity = st.number_input("Quantity", min_value=0, step=1)
     
     if operation == "Buy":
@@ -275,12 +285,10 @@ with st.sidebar.expander("Product Details", expanded=True):
 
 action_btn = st.sidebar.button("Confirm Transaction", use_container_width=True, type="primary")
 
-# -------------------- OPERATIONS --------------------
 if action_btn:
     if quantity == 0:
         st.sidebar.error("Quantity must be greater than 0!")
     else:
-        # Get current state of the product
         cursor.execute("""
             SELECT product_name, stock_left, expiry_date, base_price
             FROM my_table
@@ -301,8 +309,6 @@ if action_btn:
                     st.sidebar.warning(f"Cannot sell {quantity} units. Only {current_stock} available.")
                 else:
                     stock_left = current_stock - quantity
-                    
-                    # Calculate dynamic price
                     adjusted_price, discount = calculate_dynamic_price(base_price_db, expiry_date_db, transaction_date)
                     total_revenue = adjusted_price * quantity
 
@@ -338,20 +344,18 @@ if action_btn:
 
         elif operation == "Buy":
             if not current_state:
-                # New product
-                product_name = st.sidebar.text_input("Product Name (Required for new products)")
-                if not product_name:
+                if 'product_name_input' not in locals() or not product_name_input:
                     st.sidebar.error("Please enter a product name!")
                 else:
                     cursor.execute("""
                         INSERT INTO my_table (product_id, product_name, date, day, stock_sold, stock_left,
                                             expiry_date, base_price, adjusted_price, discount_percent)
                         VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 0)
-                    """, (product_id, product_name, transaction_date, transaction_day, quantity, 
+                    """, (product_id, product_name_input, transaction_date, transaction_day, quantity, 
                           expiry_str, base_price, base_price))
                     
                     st.sidebar.success(f"""
-                    ✅ Added new product: **{product_name}**
+                    ✅ Added new product: **{product_name_input}**
                     
                     📦 Quantity: {quantity}
                     💰 Base Price: ₹{base_price:.2f}
@@ -380,13 +384,11 @@ if action_btn:
                 conn.commit()
                 st.rerun()
 
-# -------------------- MAIN DASHBOARD --------------------
 st.markdown('<h1 class="main-header">SmartShop Inventory Dashboard</h1>', unsafe_allow_html=True)
 
 df_transactions = pd.read_sql("SELECT * FROM my_table ORDER BY date DESC, ROWID DESC", conn)
 df_inventory = get_current_inventory(conn)
 
-# Add expiry calculations to inventory
 if not df_inventory.empty:
     df_inventory['expiry_date'] = pd.to_datetime(df_inventory['expiry_date'], errors='coerce')
     df_inventory['expiry_date'].fillna(pd.Timestamp.now() + timedelta(days=30), inplace=True)
@@ -400,7 +402,6 @@ if not df_inventory.empty:
         lambda row: calculate_dynamic_price(row['base_price'], row['expiry_date'], selected_date)[1], axis=1
     )
 
-# -------------------- EXPIRY ALERTS --------------------
 if not df_inventory.empty:
     critical = df_inventory[df_inventory['days_to_expiry'] <= 2]
     urgent = df_inventory[(df_inventory['days_to_expiry'] > 2) & (df_inventory['days_to_expiry'] <= 5)]
@@ -427,7 +428,6 @@ if not df_inventory.empty:
 
 st.markdown("---")
 
-# -------------------- KPI METRICS --------------------
 if not df_inventory.empty:
     col1, col2, col3, col4 = st.columns(4)
     
@@ -460,7 +460,6 @@ st.markdown("---")
 
 tabs = st.tabs(["Overview", "Expiry Management", "AI Analytics", "Transactions", "Inventory"])
 
-# -------------------- OVERVIEW TAB --------------------
 with tabs[0]:
     if not df_inventory.empty and not df_transactions.empty:
         col1, col2 = st.columns(2)
@@ -497,7 +496,6 @@ with tabs[0]:
     else:
         st.info("No data available. Start by adding products to your inventory!")
 
-# -------------------- EXPIRY MANAGEMENT TAB --------------------
 with tabs[1]:
     st.markdown("### Expiry-Based Pricing Strategy")
     
@@ -546,7 +544,6 @@ with tabs[1]:
         
         st.dataframe(df_expiry_display, use_container_width=True, height=400)
 
-# -------------------- AI ANALYTICS TAB --------------------
 with tabs[2]:
     if not df_transactions.empty and len(df_transactions) >= 10:
         df = df_transactions.copy()
@@ -556,7 +553,6 @@ with tabs[2]:
         df['day_of_month'] = df['date'].dt.day
         df['product_id_code'] = df['product_id'].astype('category').cat.codes
 
-        # ========== FORECASTING (Regressor) ==========
         st.markdown("### 📈 Sales Forecasting (Regression)")
         col1, col2 = st.columns(2)
         
@@ -594,14 +590,11 @@ with tabs[2]:
         
         st.markdown("---")
         
-        # ========== CLASSIFICATION: Sales Performance Prediction ==========
         st.markdown("### 🎯 Sales Performance Classification")
         
-        # Prepare classification data
         df_class = df[df['stock_sold'] > 0].copy()
         
-        if len(df_class) >= 15:  # Need sufficient data for classification
-            # Create sales performance categories
+        if len(df_class) >= 15:
             df_class['sales_performance'] = pd.cut(
                 df_class['stock_sold'], 
                 bins=[0, df_class['stock_sold'].quantile(0.33), 
@@ -611,21 +604,17 @@ with tabs[2]:
                 include_lowest=True
             )
             
-            # Features for classification
             X_class = df_class[['product_id_code', 'month', 'day_of_month', 'discount_percent']]
             y_class = df_class['sales_performance']
             
-            # Train-test split
             if len(X_class) >= 20:
                 X_train, X_test, y_train, y_test = train_test_split(
                     X_class, y_class, test_size=0.3, random_state=42
                 )
                 
-                # Train classifier
                 classifier = RandomForestClassifier(n_estimators=100, random_state=42)
                 classifier.fit(X_train, y_train)
                 
-                # Predictions
                 y_pred = classifier.predict(X_test)
                 accuracy = accuracy_score(y_test, y_pred)
                 
@@ -635,7 +624,6 @@ with tabs[2]:
                     st.metric("Classification Accuracy", f"{accuracy*100:.1f}%")
                 
                 with col2:
-                    # Feature importance
                     feature_importance = pd.DataFrame({
                         'Feature': ['Product', 'Month', 'Day', 'Discount'],
                         'Importance': classifier.feature_importances_
@@ -645,7 +633,6 @@ with tabs[2]:
                     st.info(f"🏆 {feature_importance.iloc[0]['Feature']}")
                 
                 with col3:
-                    # Predicted distribution
                     pred_counts = pd.Series(y_pred).value_counts()
                     st.markdown("**Predicted Classes**")
                     for idx, count in pred_counts.items():
@@ -664,7 +651,6 @@ with tabs[2]:
                     performance_dist = df_class['sales_performance'].value_counts()
                     st.bar_chart(performance_dist, height=300)
                 
-                # Predictions for each product
                 st.markdown("---")
                 st.markdown("#### Product Performance Predictions (Next Month)")
                 
@@ -672,16 +658,16 @@ with tabs[2]:
                 for prod in df['product_name'].unique():
                     prod_data = df_class[df_class['product_name'] == prod]
                     if len(prod_data) >= 3:
-                        # Predict for next month with average discount
                         next_month = (selected_date.month % 12) + 1
                         avg_discount = prod_data['discount_percent'].mean()
                         
-                        pred_features = [[
-                            prod_data['product_id_code'].iloc[0],
-                            next_month,
-                            15,  # mid-month
-                            avg_discount
-                        ]]
+                        # Create DataFrame with proper column names matching training data
+                        pred_features = pd.DataFrame({
+                            'product_id_code': [prod_data['product_id_code'].iloc[0]],
+                            'month': [next_month],
+                            'day_of_month': [15],
+                            'discount_percent': [avg_discount]
+                        })
                         
                         predicted_class = classifier.predict(pred_features)[0]
                         confidence = classifier.predict_proba(pred_features).max()
@@ -703,7 +689,6 @@ with tabs[2]:
         
         st.markdown("---")
         
-        # ========== REVENUE ANALYSIS ==========
         st.markdown("### 💰 Revenue Analysis")
         if 'adjusted_price' in df.columns and 'base_price' in df.columns:
             df_revenue = df[df['stock_sold'] > 0].copy()
@@ -729,7 +714,6 @@ with tabs[2]:
     else:
         st.info("Need at least 10 transactions to generate AI analytics.")
 
-# -------------------- TRANSACTIONS TAB --------------------
 with tabs[3]:
     st.markdown("### Transaction History")
     
@@ -753,7 +737,6 @@ with tabs[3]:
             cutoff_date = pd.to_datetime(selected_date) - timedelta(days=days_map[date_range])
             filtered_df = filtered_df[filtered_df['date'] >= cutoff_date]
         
-        # Add revenue column
         if 'adjusted_price' in filtered_df.columns:
             filtered_df['revenue'] = filtered_df['adjusted_price'] * filtered_df['stock_sold']
         
@@ -762,7 +745,6 @@ with tabs[3]:
     else:
         st.info("No transactions recorded yet")
 
-# -------------------- INVENTORY TAB --------------------
 with tabs[4]:
     st.markdown("### Current Inventory Status")
     
@@ -829,5 +811,3 @@ with tabs[4]:
                     )
     else:
         st.info("Inventory is empty. Add products using the sidebar!")
-
-conn.close()
